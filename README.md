@@ -58,6 +58,25 @@ Hiçbir uygulama yüklemeden doğrudan web tarayıcınızdan izlemek için:
 
 ---
 
+### 4. 🔀 Çoklu Kaynak Seçimi (Canlı Yayın Kaynağını Değiştirme)
+Önemli derbilerde veya yoğun maç günlerinde bir yayın platformu yoğunluktan takılırsa, yayını anında başka bir sağlayıcıya geçirebilirsiniz:
+
+- **Web TV Üzerinden:**
+  Oynatıcının hemen altında yer alan **"📡 Yayın Kaynağı"** bölümünden dilediğiniz kaynağa (`⚡️ Otomatik`, `Alemdar Sport`, `Selçuk / Arda`, `Taraftarium24`, `Mahsun Sports`, `Papaz Sports`) tıklayarak yayını anında kesintisiz başka bir kaynaktan devam ettirebilirsiniz.
+- **Smart TV ve VLC için Alternatif Kanallar Listesi:**
+  Eğer TV kumandanızdan direkt kanal değiştirir gibi kaynak değiştirmek isterseniz, M3U linkinizin sonuna `&all_sources=1` ekleyin:
+  ```text
+  http://anthology-live.duckdns.org:3555/iptv.m3u?username=KULLANICI_ADI&password=SIFRE&all_sources=1
+  ```
+  Bu sayede çalma listenizde hem ana kanallar (otomatik en hızlı çalışan), hem de her kanalın **[Alemdar]**, **[Selçuk]**, **[Taraftarium]** gibi alternatifleri ayrı kanallar olarak listelenir.
+- **Doğrudan Akış URL'si ile:**
+  Herhangi bir kanal linkine `?source=alemdarsport` veya `?source=ardasports` ekleyerek istediğiniz kaynaktan açabilirsiniz:
+  ```text
+  http://anthology-live.duckdns.org:3555/live/beinsports1.m3u8?source=alemdarsport
+  ```
+
+---
+
 ## ⚡️ Öne Çıkan Özellikler
 
 1. **5 Büyük Canlı Platform Çözücü:**

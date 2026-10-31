@@ -76,6 +76,9 @@ func main() {
 	mux.HandleFunc("/segment", func(w http.ResponseWriter, r *http.Request) {
 		api.HandleSegment(w, r)
 	})
+	mux.HandleFunc("/api/sources", func(w http.ResponseWriter, r *http.Request) {
+		api.HandleChannelSources(w, r)
+	})
 
 	// Wrap with Global CORS & Logging Middleware
 	handler := corsAndLogMiddleware(mux)

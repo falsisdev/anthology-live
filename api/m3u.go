@@ -50,6 +50,28 @@ func HandleM3UPlaylist(w http.ResponseWriter, r *http.Request) {
 		sb.WriteString(fmt.Sprintf("%s/live/%s.m3u8%s\n\n", baseURL, ch.Key, authQuery))
 	}
 
+	// Optional: Include alternative platform sources
+	includeAlternatives := r.URL.Query().Get("all_sources") == "1" || r.URL.Query().Get("alternatives") == "1"
+	if includeAlternatives {
+		sb.WriteString("\n# ── Alternatif Platform Kaynakları ──\n\n")
+		for _, ch := range engine.ChannelList {
+			providers := engine.GetAvailableProviders(ch.Key)
+			for _, p := range providers {
+				if p.ID == "auto" {
+					continue
+				}
+				sep := "?"
+				if authQuery != "" {
+					sep = "&"
+				}
+				altURL := fmt.Sprintf("%s/live/%s.m3u8%s%ssource=%s", baseURL, ch.Key, authQuery, sep, p.ID)
+				sb.WriteString(fmt.Sprintf("#EXTINF:-1 tvg-id=\"%s.tr\" tvg-name=\"%s [%s]\" tvg-logo=\"%s\" group-title=\"Alternatif Kaynaklar\",%s [%s]\n",
+					ch.Key, ch.Name, p.Name, ch.LogoURL, ch.Name, p.Name))
+				sb.WriteString(fmt.Sprintf("%s\n\n", altURL))
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8")
 	w.Header().Set("Content-Disposition", "inline; filename=\"anthology_live.m3u\"")
 	w.Header().Set("Access-Control-Allow-Origin", "*")

@@ -78,27 +78,38 @@ func (r *RestreamerEngine) cleanupLoop() {
 // InvalidateStream clears a channel's cached stream on failure.
 func (r *RestreamerEngine) InvalidateStream(channelKey string) {
 	r.mu.Lock()
-	delete(r.streamCache, channelKey)
+	prefix := channelKey + ":"
+	for k := range r.streamCache {
+		if k == channelKey || strings.HasPrefix(k, prefix) {
+			delete(r.streamCache, k)
+		}
+	}
 	r.mu.Unlock()
 }
 
-// GetOrResolveStream retrieves a cached stream or initiates concurrent resolution.
-func (r *RestreamerEngine) GetOrResolveStream(ctx context.Context, channelKey string) (*StreamResult, error) {
+// GetOrResolveStream retrieves a cached stream or initiates resolution for a specific provider.
+func (r *RestreamerEngine) GetOrResolveStream(ctx context.Context, channelKey, provider string) (*StreamResult, error) {
+	provider = NormalizeProvider(provider)
+	if provider == "" {
+		provider = "auto"
+	}
+	cacheKey := channelKey + ":" + provider
+
 	r.mu.RLock()
-	cached, ok := r.streamCache[channelKey]
+	cached, ok := r.streamCache[cacheKey]
 	r.mu.RUnlock()
 
 	if ok && time.Since(cached.CreatedAt) < 60*time.Second {
 		return cached.Stream, nil
 	}
 
-	stream, err := ResolveBestStream(ctx, channelKey)
+	stream, err := ResolveStream(ctx, channelKey, provider)
 	if err != nil || stream == nil {
 		return nil, err
 	}
 
 	r.mu.Lock()
-	r.streamCache[channelKey] = CachedManifest{
+	r.streamCache[cacheKey] = CachedManifest{
 		Stream:    stream,
 		CreatedAt: time.Now(),
 	}
@@ -160,8 +171,8 @@ func (r *RestreamerEngine) FetchSegment(ctx context.Context, targetURL, referer,
 }
 
 // RewriteManifest fetches and translates an upstream HLS playlist into local proxy URLs.
-func (r *RestreamerEngine) RewriteManifest(ctx context.Context, channelKey, baseURL, authQuery string) (string, error) {
-	stream, err := r.GetOrResolveStream(ctx, channelKey)
+func (r *RestreamerEngine) RewriteManifest(ctx context.Context, channelKey, provider, baseURL, authQuery string) (string, error) {
+	stream, err := r.GetOrResolveStream(ctx, channelKey, provider)
 	if err != nil || stream == nil {
 		return "", fmt.Errorf("yayın bulunamadı")
 	}
@@ -202,6 +213,11 @@ func (r *RestreamerEngine) RewriteManifest(ctx context.Context, channelKey, base
 	refEnc := base64.RawURLEncoding.EncodeToString([]byte(stream.Headers["Referer"]))
 	origEnc := base64.RawURLEncoding.EncodeToString([]byte(stream.Headers["Origin"]))
 	tokenEnc := base64.RawURLEncoding.EncodeToString([]byte(stream.Headers["usertoken"]))
+
+	// Forward specific source if chosen
+	if provider != "" && provider != "auto" {
+		authQuery += "&source=" + url.QueryEscape(provider)
+	}
 
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])

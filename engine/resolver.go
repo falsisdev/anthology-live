@@ -36,6 +36,101 @@ var (
 	mahsunBaseTime  time.Time
 )
 
+// NormalizeProvider maps provider aliases to canonical names.
+func NormalizeProvider(p string) string {
+	p = strings.ToLower(strings.TrimSpace(p))
+	switch p {
+	case "selcuk", "arda", "ardasports", "selcuksport", "selcukspor":
+		return "ardasports"
+	case "alemdar", "alemdarsport":
+		return "alemdarsport"
+	case "taraftarium", "taraftarium24":
+		return "taraftarium"
+	case "mahsun", "mahsunsports":
+		return "mahsunsports"
+	case "papaz", "papazsports":
+		return "papazsports"
+	default:
+		return p
+	}
+}
+
+// ProviderInfo represents metadata about an available stream source.
+type ProviderInfo struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Available bool   `json:"available"`
+}
+
+// GetAvailableProviders returns the list of all supported sources for a channel.
+func GetAvailableProviders(channelKey string) []ProviderInfo {
+	ch, ok := FindChannelByKey(channelKey)
+	if !ok {
+		return nil
+	}
+
+	providers := []ProviderInfo{
+		{ID: "auto", Name: "⚡️ Otomatik (En Hızlı)", Available: true},
+	}
+	if ch.AlemdarSport != "" {
+		providers = append(providers, ProviderInfo{ID: "alemdarsport", Name: "Alemdar Sport", Available: true})
+	}
+	if ch.ArdaSports != "" {
+		providers = append(providers, ProviderInfo{ID: "ardasports", Name: "Selçuk / Arda", Available: true})
+	}
+	if ch.Taraftarium != "" {
+		providers = append(providers, ProviderInfo{ID: "taraftarium", Name: "Taraftarium24", Available: true})
+	}
+	if ch.MahsunSports != "" {
+		providers = append(providers, ProviderInfo{ID: "mahsunsports", Name: "Mahsun Sports", Available: true})
+	}
+	if ch.PapazSports != "" {
+		providers = append(providers, ProviderInfo{ID: "papazsports", Name: "Papaz Sports", Available: true})
+	}
+	return providers
+}
+
+// ResolveStream queries a specific provider or defaults to auto-selection.
+func ResolveStream(ctx context.Context, channelKey, provider string) (*StreamResult, error) {
+	provider = NormalizeProvider(provider)
+	if provider == "" || provider == "auto" {
+		return ResolveBestStream(ctx, channelKey)
+	}
+
+	ch, ok := FindChannelByKey(channelKey)
+	if !ok {
+		return nil, nil
+	}
+
+	var resolver func(context.Context, ChannelMapping) (*StreamResult, error)
+	switch provider {
+	case "ardasports":
+		resolver = resolveArda
+	case "taraftarium":
+		resolver = resolveTaraftarium
+	case "mahsunsports":
+		resolver = resolveMahsun
+	case "alemdarsport":
+		resolver = resolveAlemdar
+	case "papazsports":
+		resolver = resolvePapaz
+	default:
+		return ResolveBestStream(ctx, channelKey)
+	}
+
+	res, err := resolver(ctx, ch)
+	if err == nil && res != nil && res.URL != "" {
+		if testStreamAlive(ctx, res) {
+			res.ChannelKey = ch.Key
+			res.ChannelName = ch.Name
+			return res, nil
+		}
+	}
+
+	// If requested provider failed, fall back to best available working stream
+	return ResolveBestStream(ctx, channelKey)
+}
+
 // ResolveBestStream queries all available providers concurrently and returns the fastest valid stream.
 func ResolveBestStream(ctx context.Context, channelKey string) (*StreamResult, error) {
 	ch, ok := FindChannelByKey(channelKey)

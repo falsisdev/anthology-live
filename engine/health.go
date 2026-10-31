@@ -37,7 +37,7 @@ func warmupKeyChannels(ctx context.Context) {
 
 	for _, k := range keyChannels {
 		go func(channelKey string) {
-			stream, err := restreamer.GetOrResolveStream(ctx, channelKey)
+			stream, err := restreamer.GetOrResolveStream(ctx, channelKey, "auto")
 			if err == nil && stream != nil {
 				log.Printf("⚡️ [Warmup] %s hazır: [%s] %s", channelKey, stream.Provider, stream.URL)
 			}
@@ -50,7 +50,7 @@ func checkAndHealChannels(ctx context.Context) {
 	testChannels := []string{"beinsports1", "ssport1"}
 
 	for _, k := range testChannels {
-		stream, err := restreamer.GetOrResolveStream(ctx, k)
+		stream, err := restreamer.GetOrResolveStream(ctx, k, "auto")
 		if err != nil || stream == nil {
 			log.Printf("⚠️ [Health Check] %s yanıt vermiyor, self-healing başlatılıyor...", k)
 			restreamer.InvalidateStream(k)
@@ -59,7 +59,7 @@ func checkAndHealChannels(ctx context.Context) {
 			HuntTaraftariumDomain(ctx)
 
 			// Retry resolving
-			newStream, err := restreamer.GetOrResolveStream(ctx, k)
+			newStream, err := restreamer.GetOrResolveStream(ctx, k, "auto")
 			if err == nil && newStream != nil {
 				log.Printf("✅ [Self-Healing] %s başarıyla kurtarıldı -> [%s]", k, newStream.Provider)
 			}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -30,6 +31,20 @@ func HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 	// Support Xtream URL pattern: /live/:username/:password/:streamId
 	parts := strings.Split(path, "/")
 	channelIdentifier := parts[len(parts)-1]
+
+	source := r.URL.Query().Get("source")
+	if source == "" {
+		source = r.URL.Query().Get("provider")
+	}
+
+	// Allow URL patterns like /live/beinsports1_alemdar.m3u8
+	if strings.Contains(channelIdentifier, "_") {
+		subParts := strings.SplitN(channelIdentifier, "_", 2)
+		channelIdentifier = subParts[0]
+		if source == "" {
+			source = subParts[1]
+		}
+	}
 
 	var channelKey string
 	if streamID, err := strconv.Atoi(channelIdentifier); err == nil {
@@ -66,7 +81,7 @@ func HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	restreamer := engine.GetRestreamer()
-	manifest, err := restreamer.RewriteManifest(r.Context(), channelKey, baseURL, authQuery)
+	manifest, err := restreamer.RewriteManifest(r.Context(), channelKey, source, baseURL, authQuery)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Yayın çözülemedi: %v", err), http.StatusBadGateway)
 		return
@@ -179,4 +194,22 @@ func decodeB64(s string) string {
 		return ""
 	}
 	return string(b)
+}
+
+// HandleChannelSources returns the list of available providers for a channel.
+func HandleChannelSources(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	channelKey := r.URL.Query().Get("channel")
+	if channelKey == "" {
+		channelKey = r.URL.Query().Get("key")
+	}
+	if channelKey == "" {
+		http.Error(w, `{"error":"missing channel parameter"}`, http.StatusBadRequest)
+		return
+	}
+
+	providers := engine.GetAvailableProviders(channelKey)
+	json.NewEncoder(w).Encode(providers)
 }
