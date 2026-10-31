@@ -25,7 +25,7 @@ Televizyonlarda web tarayıcı kullanmak zahmetli olduğu için sistem **Xtream 
 2. Uygulamayı açıp **"Xtream Codes API ile Giriş Yap"** (Add Playlist > Xtream Codes) seçeneğini seçin.
 3. Aşağıdaki bilgileri doldurun:
    - **Çalma Listesi Adı:** `Anthology Live`
-   - **Sunucu Adresi (Server URL):** `http://anthology-live.duckdns.org:3555`
+   - **Sunucu Adresi (Server URL):** `https://anthology-live.duckdns.org`
    - **Kullanıcı Adı (Username):** `<anthology-dav kullanıcı adınız>`
    - **Şifre (Password):** `<anthology-dav şifreniz>`
 4. **Giriş Yap** butonuna bastığınızda tüm spor ve ulusal kanallar kategorileri, EPG program rehberi ve logolarıyla otomatik olarak yüklenecektir.
@@ -39,7 +39,7 @@ Herhangi bir IPTV uygulaması kurmadan doğrudan VLC veya IINA ile izleyebilirsi
 2. **Medya (Media) > Ağ Akışı Aç (Open Network Stream)** yolunu izleyin (Kısayol: `Ctrl+N` veya Mac'te `Cmd+N`).
 3. Aşağıdaki adresi yapıştırıp **Oynat** butonuna basın:
    ```text
-   http://anthology-live.duckdns.org:3555/iptv.m3u?username=KULLANICI_ADINIZ&password=SIFRENIZ
+   https://anthology-live.duckdns.org/iptv.m3u?username=KULLANICI_ADINIZ&password=SIFRENIZ
    ```
 4. Kanallar listesini açarak (`Ctrl+L` / `Cmd+L`) dilediğiniz beIN Sports, S Sport, Tivibu veya TRT kanalını seçin.
 
@@ -50,7 +50,7 @@ Hiçbir uygulama yüklemeden doğrudan web tarayıcınızdan izlemek için:
 
 1. Tarayıcınızda şu adresi açın:
    ```text
-   http://anthology-live.duckdns.org:3555/
+   https://anthology-live.duckdns.org/
    ```
 2. Şık Web TV arayüzünden izlemek istediğiniz kanala tıklayın.
 3. Dahili **Hls.js** oynatıcı sayesinde yayın otomatik olarak tam ekran ve 1080p kalitesinde başlar.
@@ -66,13 +66,13 @@ Hiçbir uygulama yüklemeden doğrudan web tarayıcınızdan izlemek için:
 - **Smart TV ve VLC için Alternatif Kanallar Listesi:**
   Eğer TV kumandanızdan direkt kanal değiştirir gibi kaynak değiştirmek isterseniz, M3U linkinizin sonuna `&all_sources=1` ekleyin:
   ```text
-  http://anthology-live.duckdns.org:3555/iptv.m3u?username=KULLANICI_ADI&password=SIFRE&all_sources=1
+  https://anthology-live.duckdns.org/iptv.m3u?username=KULLANICI_ADI&password=SIFRE&all_sources=1
   ```
   Bu sayede çalma listenizde hem ana kanallar (otomatik en hızlı çalışan), hem de her kanalın **[Alemdar]**, **[Selçuk]**, **[Taraftarium]** gibi alternatifleri ayrı kanallar olarak listelenir.
 - **Doğrudan Akış URL'si ile:**
   Herhangi bir kanal linkine `?source=alemdarsport` veya `?source=ardasports` ekleyerek istediğiniz kaynaktan açabilirsiniz:
   ```text
-  http://anthology-live.duckdns.org:3555/live/beinsports1.m3u8?source=alemdarsport
+  https://anthology-live.duckdns.org/live/beinsports1.m3u8?source=alemdarsport
   ```
 
 ---
