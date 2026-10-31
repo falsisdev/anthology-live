@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Anthology Live — Kesintisiz Canlı TV & Spor</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root {
+            --bg: #090d16;
+            --surface: #131b2e;
+            --surface-hover: #1c2742;
+            --border: rgba(255, 255, 255, 0.08);
+            --accent: #2563eb;
+            --accent-glow: rgba(37, 99, 235, 0.4);
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --green: #10b981;
+            --red: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; }
+
+        header { height: 60px; background: rgba(19, 27, 46, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; position: sticky; top: 0; z-index: 100; }
+        .logo { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .logo-badge { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 6px; letter-spacing: 0.5px; }
+
+        .header-actions { display: flex; gap: 10px; align-items: center; }
+        .btn-action { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); color: var(--text-main); padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-action:hover { background: rgba(255, 255, 255, 0.12); transform: translateY(-1px); }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+
+        .app-container { display: flex; flex: 1; height: calc(100vh - 60px); }
+        
+        /* Video Section */
+        .player-section { flex: 1; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
+        .video-wrapper { width: 100%; aspect-ratio: 16/9; max-height: 72vh; background: #000; border-radius: 14px; overflow: hidden; position: relative; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); border: 1px solid var(--border); }
+        video { width: 100%; height: 100%; object-fit: contain; }
+
+        .player-info-bar { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: gap: 12px; }
+        .current-ch { display: flex; align-items: center; gap: 14px; }
+        .current-ch img { width: 44px; height: 44px; border-radius: 8px; object-fit: contain; background: rgba(255,255,255,0.04); padding: 4px; }
+        .current-title { font-size: 18px; font-weight: 700; }
+        .current-sub { font-size: 13px; color: var(--text-sub); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); display: inline-block; }
+
+        .stream-actions { display: flex; gap: 8px; }
+
+        /* Channel Sidebar */
+        .sidebar { width: 340px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+        .sidebar-search { padding: 16px; border-bottom: 1px solid var(--border); }
+        .search-input { width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 14px; outline: none; }
+        .search-input:focus { border-color: var(--accent); }
+
+        .category-tabs { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+        .cat-tab { background: transparent; border: none; color: var(--text-sub); font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+        .cat-tab.active { background: rgba(255, 255, 255, 0.08); color: #fff; }
+
+        .channel-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+        .channel-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
+        .channel-item:hover { background: var(--surface-hover); }
+        .channel-item.active { background: rgba(37, 99, 235, 0.15); border-color: rgba(37, 99, 235, 0.4); }
+        .channel-item img { width: 36px; height: 36px; border-radius: 6px; object-fit: contain; background: rgba(0,0,0,0.2); }
+        .ch-details { flex: 1; min-width: 0; }
+        .ch-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ch-cat { font-size: 12px; color: var(--text-sub); }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: #131b2e; border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 580px; padding: 24px; box-shadow: 0 25px 50px rgba(0,0,0,0.5); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 20px; font-weight: 700; }
+        .close-btn { background: none; border: none; color: var(--text-sub); font-size: 22px; cursor: pointer; }
+        .tv-card { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+        .tv-label { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
+        .tv-val { font-family: monospace; font-size: 14px; color: #60a5fa; word-break: break-all; display: flex; justify-content: space-between; align-items: center; }
+        .copy-pill { background: rgba(255,255,255,0.08); border: none; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        .copy-pill:hover { background: var(--accent); }
+
+        @media (max-width: 900px) {
+            .app-container { flex-direction: column; height: auto; }
+            .sidebar { width: 100%; height: 500px; border-left: none; border-top: 1px solid var(--border); }
+            .player-section { padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <span>🚀 Anthology Live</span>
+            <span class="logo-badge">CANLI</span>
+        </div>
+        <div class="header-actions">
+            <button class="btn-action btn-primary" onclick="openTVModal()">📺 Smart TV & Oynatıcı Bilgileri</button>
+            <a class="btn-action" href="/iptv.m3u" target="_blank" download="anthology.m3u">📥 M3U İndir</a>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Main Video Area -->
+        <div class="player-section">
+            <div class="video-wrapper">
+                <video id="videoPlayer" controls autoplay playsinline></video>
+            </div>
+            <div class="player-info-bar">
+                <div class="current-ch">
+                    <img id="currentLogo" src="https://raw.githubusercontent.com/falsisdev/anthology/main/assets/canli/beinsports.png" alt="logo">
+                    <div>
+                        <div class="current-title" id="currentTitle">BEIN SPORTS 1 HD</div>
+                        <div class="current-sub">
+                            <span class="live-dot"></span>
+                            <span>Canlı Yayın • 1080p • Go HLS Cache</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="stream-actions">
+                    <a id="vlcLink" class="btn-action" href="vlc://">⚡️ VLC ile Aç</a>
+                    <a id="iinaLink" class="btn-action" href="iina://weblink?url=">🍿 IINA ile Aç</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Channels List -->
+        <div class="sidebar">
+            <div class="sidebar-search">
+                <input type="text" id="searchInput" class="search-input" placeholder="Kanal ara... (Örn: BeIN, S Sport)">
+            </div>
+            <div class="category-tabs">
+                <button class="cat-tab active" onclick="filterCategory('all', this)">Tümü (27)</button>
+                <button class="cat-tab" onclick="filterCategory('Spor', this)">Spor</button>
+                <button class="cat-tab" onclick="filterCategory('Ulusal', this)">Ulusal</button>
+            </div>
+            <div class="channel-list" id="channelList"></div>
+        </div>
+    </div>
+
+    <!-- Smart TV Setup Modal -->
+    <div class="modal-overlay" id="tvModal" onclick="closeTVModalOnBackdrop(event)">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">📺 Smart TV & Harici Oynatıcı Kurulumu</div>
+                <button class="close-btn" onclick="closeTVModal()">&times;</button>
+            </div>
+            
+            <p style="font-size: 13px; color: var(--text-sub); margin-bottom: 16px;">
+                TiviMate, IPTV Smarters Pro, XCIPTV, Televizo veya Apple TV/SenPlayer gibi TV uygulamalarında <strong>Xtream Codes API</strong> seçip aşağıdaki bilgileri girin:
+            </p>
+
+            <div class="tv-card">
+                <div class="tv-label">Sunucu Adresi (Server URL)</div>
+                <div class="tv-val">
+                    <span id="tvServerUrl"></span>
+                    <button class="copy-pill" onclick="copyText('tvServerUrl')">Kopyala</button>
+                </div>
+            </div>
+
+            <div class="tv-card">
+                <div class="tv-label">Kullanıcı Adı & Şifre</div>
+                <div class="tv-val">
+                    <span>anthology-dav hesabınızın bilgileri</span>
+                </div>
+            </div>
+
+            <div class="tv-card">
+                <div class="tv-label">Doğrudan M3U Plus URL (VLC & Kodi için)</div>
+                <div class="tv-val">
+                    <span id="tvM3UUrl"></span>
+                    <button class="copy-pill" onclick="copyText('tvM3UUrl')">Kopyala</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let channels = [];
+        let activeChannel = null;
+        let hls = null;
+        const video = document.getElementById('videoPlayer');
+
+        // Populate TV modal URLs based on current location
+        const hostURL = window.location.origin;
+        document.getElementById('tvServerUrl').innerText = hostURL;
+        document.getElementById('tvM3UUrl').innerText = hostURL + '/iptv.m3u';
+
+        async function loadChannels() {
+            try {
+                const res = await fetch('/player_api.php?action=get_live_streams');
+                const list = await res.json();
+                channels = list.map(item => ({
+                    id: item.stream_id,
+                    name: item.name,
+                    key: item.epg_channel_id.replace('.tr', ''),
+                    category: item.category_id === '2' ? 'Ulusal' : 'Spor',
+                    logo: item.stream_icon
+                }));
+                renderChannelList(channels);
+                if (channels.length > 0) {
+                    playChannel(channels[0]);
+                }
+            } catch (e) {
+                console.error("Kanal listesi alınamadı:", e);
+            }
+        }
+
+        function renderChannelList(list) {
+            const container = document.getElementById('channelList');
+            container.innerHTML = '';
+            list.forEach(ch => {
+                const div = document.createElement('div');
+                div.className = `channel-item ${activeChannel && activeChannel.key === ch.key ? 'active' : ''}`;
+                div.onclick = () => playChannel(ch);
+                div.innerHTML = `
+                    <img src="${ch.logo}" alt="${ch.name}" onerror="this.src='https://raw.githubusercontent.com/falsisdev/anthology/main/assets/canli/default_tv.png'">
+                    <div class="ch-details">
+                        <div class="ch-name">${ch.name}</div>
+                        <div class="ch-cat">${ch.category}</div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function playChannel(ch) {
+            activeChannel = ch;
+            document.getElementById('currentTitle').innerText = ch.name;
+            document.getElementById('currentLogo').src = ch.logo;
+
+            const streamUrl = `${window.location.origin}/live/${ch.key}.m3u8`;
+            document.getElementById('vlcLink').href = `vlc://${streamUrl}`;
+            document.getElementById('iinaLink').href = `iina://weblink?url=${encodeURIComponent(streamUrl)}`;
+
+            // Update active state in list
+            document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+            renderChannelList(filterList());
+
+            if (Hls.isSupported()) {
+                if (hls) hls.destroy();
+                hls = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 30
+                });
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    video.play().catch(e => console.log("Otomatik oynatma engellendi:", e));
+                });
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log("Yeniden bağlanılıyor...");
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native Safari / iOS
+                video.src = streamUrl;
+                video.play();
+            }
+        }
+
+        // Filtering & Search
+        let currentCat = 'all';
+        function filterCategory(cat, btn) {
+            currentCat = cat;
+            document.querySelectorAll('.cat-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderChannelList(filterList());
+        }
+
+        function filterList() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            return channels.filter(ch => {
+                const matchCat = currentCat === 'all' || ch.category === currentCat;
+                const matchQuery = ch.name.toLowerCase().includes(query) || ch.key.toLowerCase().includes(query);
+                return matchCat && matchQuery;
+            });
+        }
+
+        document.getElementById('searchInput').addEventListener('input', () => {
+            renderChannelList(filterList());
+        });
+
+        // TV Modal helpers
+        function openTVModal() {
+            document.getElementById('tvModal').classList.add('open');
+        }
+        function closeTVModal() {
+            document.getElementById('tvModal').classList.remove('open');
+        }
+        function closeTVModalOnBackdrop(e) {
+            if (e.target.id === 'tvModal') closeTVModal();
+        }
+        function copyText(elementId) {
+            const text = document.getElementById(elementId).innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Kopyalandı: ' + text);
+            });
+        }
+
+        loadChannels();
+    </script>
+</body>
+</html>

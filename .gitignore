@@ -1,0 +1,35 @@
+# Binaries
+anthology-live
+anthology-live-linux
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Data & Databases
+data/
+*.db
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Logs
+*.log
+/tmp/anthology-live.log
+/tmp/anthology-live.err.log
+
+# Node dependencies (legacy)
+node_modules/
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db

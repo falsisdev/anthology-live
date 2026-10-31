@@ -1,0 +1,26 @@
+{
+  "name": "Anthology Live",
+  "version": "1.0.0",
+  "port": 3555,
+  "urls": {
+    "live": {
+      "taraftarium": {
+        "base": "https://taraftarium24-245.top/",
+        "api_base": "https://teletv15.top",
+        "base_number": 245
+      },
+      "ardasports": {
+        "base": "https://selcuksporkral1.cc"
+      },
+      "alemdarsport": {
+        "base": "https://alemdarsport.cfd"
+      },
+      "mahsunsports": {
+        "base": "https://mahsunsports55.xyz"
+      },
+      "papazsports": {
+        "base": "https://www.papazsports1028.pro"
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "anthology-live",
+  "version": "1.0.0",
+  "description": "Anthology Live — SenPlayer, Infuse ve Apple TV için Sıfır Kasma Canlı Spor & IPTV Akış Servisi",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "anthology",
+    "live",
+    "iptv",
+    "sports",
+    "senplayer",
+    "hls"
+  ],
+  "author": "falsisdev",
+  "license": "MIT"
+}
