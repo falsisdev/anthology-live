@@ -56,7 +56,7 @@ func TestXtreamAPI(t *testing.T) {
 	if !strings.HasPrefix(m3uContent, "#EXTM3U") {
 		t.Errorf("Expected #EXTM3U header, got: %s", m3uContent[:30])
 	}
-	if !strings.Contains(m3uContent, "BEIN SPORTS 1 HD") {
-		t.Errorf("Expected BEIN SPORTS 1 HD in playlist")
+	if !strings.Contains(strings.ToLower(m3uContent), "bein sports 1") {
+		t.Errorf("Expected BeIN Sports 1 in playlist")
 	}
 }

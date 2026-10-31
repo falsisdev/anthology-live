@@ -1,12 +1,26 @@
 package engine
 
-// ChannelMapping defines how a channel is identified across different providers.
+import (
+	_ "embed"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+)
+
+//go:embed canli.m3u
+var EmbeddedCanliM3U []byte
+
+// ChannelMapping defines a channel from anthology's canli.m3u and its multi-platform provider links.
 type ChannelMapping struct {
 	Key          string `json:"key"`
 	Name         string `json:"name"`
 	StreamID     int    `json:"stream_id"`
 	Category     string `json:"category"`
 	LogoURL      string `json:"logo_url"`
+	DirectURL    string `json:"direct_url,omitempty"`
+	BackupURL    string `json:"backup_url,omitempty"`
 	Taraftarium  string `json:"taraftarium,omitempty"`
 	ArdaSports   string `json:"ardasports,omitempty"`
 	AlemdarSport string `json:"alemdarsport,omitempty"`
@@ -14,276 +28,217 @@ type ChannelMapping struct {
 	PapazSports  string `json:"papazsports,omitempty"`
 }
 
-// StreamResult is the resolved upstream HLS URL and required HTTP headers.
-type StreamResult struct {
-	ChannelKey  string            `json:"channel_key"`
-	ChannelName string            `json:"channel_name"`
-	URL         string            `json:"url"`
-	Headers     map[string]string `json:"headers"`
-	Provider    string            `json:"provider"`
+type SportMapping struct {
+	Taraftarium  string
+	ArdaSports   string
+	AlemdarSport string
+	MahsunSports string
+	PapazSports  string
 }
 
-const (
-	AssetBaseURL = "https://raw.githubusercontent.com/falsisdev/anthology/main/assets/canli/"
-)
-
-// ChannelList is the ordered catalog of supported live channels.
-var ChannelList = []ChannelMapping{
-	{
-		Key: "beinsports1", Name: "BEIN SPORTS 1 HD", StreamID: 101, Category: "Spor",
-		LogoURL:      AssetBaseURL + "beinsports.png",
-		Taraftarium:  "bein-sports-1",
-		ArdaSports:   "bein-sports-1",
-		AlemdarSport: "bein1",
-		MahsunSports: "androstreamlivebs1",
-		PapazSports:  "100001",
-	},
-	{
-		Key: "beinsports2", Name: "BEIN SPORTS 2 HD", StreamID: 102, Category: "Spor",
-		LogoURL:      AssetBaseURL + "beinsports.png",
-		Taraftarium:  "bein-sports-2",
-		ArdaSports:   "bein-sports-2",
-		AlemdarSport: "bein2",
-		MahsunSports: "androstreamlivebs2",
-		PapazSports:  "100002",
-	},
-	{
-		Key: "beinsports3", Name: "BEIN SPORTS 3 HD", StreamID: 103, Category: "Spor",
-		LogoURL:      AssetBaseURL + "beinsports.png",
-		Taraftarium:  "bein-sports-3",
-		ArdaSports:   "bein-sports-3",
-		AlemdarSport: "bein3",
-		MahsunSports: "androstreamlivebs3",
-		PapazSports:  "100003",
-	},
-	{
-		Key: "beinsports4", Name: "BEIN SPORTS 4 HD", StreamID: 104, Category: "Spor",
-		LogoURL:      AssetBaseURL + "beinsports.png",
-		Taraftarium:  "bein-sports-4",
-		ArdaSports:   "bein-sports-4",
-		AlemdarSport: "bein4",
-		MahsunSports: "androstreamlivebs4",
-		PapazSports:  "100004",
-	},
-	{
-		Key: "beinsports5", Name: "BEIN SPORTS 5 HD", StreamID: 105, Category: "Spor",
-		LogoURL:      AssetBaseURL + "beinsports.png",
-		Taraftarium:  "bein-sports-5",
-		ArdaSports:   "bein-sports-5",
-		AlemdarSport: "bein5",
-		MahsunSports: "androstreamlivebs5",
-		PapazSports:  "100005",
-	},
-	{
-		Key: "beinsportsmax1", Name: "BEIN SPORTS MAX 1 HD", StreamID: 106, Category: "Spor",
-		LogoURL:      AssetBaseURL + "beinsports.png",
-		Taraftarium:  "bein-sports-max-1",
-		ArdaSports:   "bein-sports-max-1",
-		AlemdarSport: "beinmax1",
-		MahsunSports: "androstreamlivebsm1",
-		PapazSports:  "100006",
-	},
-	{
-		Key: "beinsportsmax2", Name: "BEIN SPORTS MAX 2 HD", StreamID: 107, Category: "Spor",
-		LogoURL:      AssetBaseURL + "beinsports.png",
-		Taraftarium:  "bein-sports-max-2",
-		ArdaSports:   "bein-sports-max-2",
-		AlemdarSport: "beinmax2",
-		MahsunSports: "androstreamlivebsm2",
-		PapazSports:  "100007",
-	},
-	{
-		Key: "ssport1", Name: "S SPORT 1 HD", StreamID: 108, Category: "Spor",
-		LogoURL:      AssetBaseURL + "ssport.png",
-		Taraftarium:  "s-sport",
-		ArdaSports:   "ssport",
-		AlemdarSport: "ssport1",
-		MahsunSports: "androstreamlivessport1",
-		PapazSports:  "100008",
-	},
-	{
-		Key: "ssport2", Name: "S SPORT 2 HD", StreamID: 109, Category: "Spor",
-		LogoURL:      AssetBaseURL + "ssport.png",
-		Taraftarium:  "s-sport-2",
-		ArdaSports:   "ssport2",
-		AlemdarSport: "ssport2",
-		MahsunSports: "androstreamlivessport2",
-		PapazSports:  "100009",
-	},
-	{
-		Key: "ssportplus", Name: "S SPORT PLUS", StreamID: 110, Category: "Spor",
-		LogoURL:      AssetBaseURL + "ssport.png",
-		Taraftarium:  "s-sport-plus",
-		ArdaSports:   "ssportplus",
-		MahsunSports: "androstreamlivessportplus",
-	},
-	{
-		Key: "tivibuspor1", Name: "TIVIBU SPOR 1 HD", StreamID: 111, Category: "Spor",
-		LogoURL:      AssetBaseURL + "tivibuspor.png",
-		Taraftarium:  "tivibu-spor-1",
-		ArdaSports:   "tivibu-spor-1",
-		AlemdarSport: "tivibu1",
-		MahsunSports: "androstreamlivetivibuspor1",
-		PapazSports:  "100010",
-	},
-	{
-		Key: "tivibuspor2", Name: "TIVIBU SPOR 2 HD", StreamID: 112, Category: "Spor",
-		LogoURL:      AssetBaseURL + "tivibuspor.png",
-		Taraftarium:  "tivibu-spor-2",
-		ArdaSports:   "tivibu-spor-2",
-		AlemdarSport: "tivibu2",
-		MahsunSports: "androstreamlivetivibuspor2",
-		PapazSports:  "100011",
-	},
-	{
-		Key: "tivibuspor3", Name: "TIVIBU SPOR 3 HD", StreamID: 113, Category: "Spor",
-		LogoURL:      AssetBaseURL + "tivibuspor.png",
-		Taraftarium:  "tivibu-spor-3",
-		ArdaSports:   "tivibu-spor-3",
-		AlemdarSport: "tivibu3",
-		MahsunSports: "androstreamlivetivibuspor3",
-		PapazSports:  "100012",
-	},
-	{
-		Key: "tivibuspor4", Name: "TIVIBU SPOR 4 HD", StreamID: 114, Category: "Spor",
-		LogoURL:      AssetBaseURL + "tivibuspor.png",
-		Taraftarium:  "tivibu-spor-4",
-		ArdaSports:   "tivibu-spor-4",
-		MahsunSports: "androstreamlivetivibuspor4",
-	},
-	{
-		Key: "smartspor1", Name: "SMART SPOR 1 HD", StreamID: 115, Category: "Spor",
-		LogoURL:      AssetBaseURL + "smartspor.png",
-		Taraftarium:  "smart-spor",
-		ArdaSports:   "smart-spor",
-		AlemdarSport: "smart1",
-		MahsunSports: "androstreamlivesmartspor1",
-		PapazSports:  "100013",
-	},
-	{
-		Key: "smartspor2", Name: "SMART SPOR 2 HD", StreamID: 116, Category: "Spor",
-		LogoURL:      AssetBaseURL + "smartspor.png",
-		Taraftarium:  "smart-spor-2",
-		ArdaSports:   "smart-spor-2",
-		AlemdarSport: "smart2",
-		MahsunSports: "androstreamlivesmartspor2",
-		PapazSports:  "100014",
-	},
-	{
-		Key: "trtspor", Name: "TRT SPOR HD", StreamID: 117, Category: "Spor",
-		LogoURL:      AssetBaseURL + "trtspor.png",
-		Taraftarium:  "trt-spor",
-		ArdaSports:   "trtspor",
-		AlemdarSport: "trtspor",
-		MahsunSports: "androstreamlivetrtspor",
-		PapazSports:  "100015",
-	},
-	{
-		Key: "trtsporyildiz", Name: "TRT SPOR YILDIZ", StreamID: 118, Category: "Spor",
-		LogoURL:      AssetBaseURL + "trtsporyildiz.png",
-		Taraftarium:  "trt-spor-yildiz",
-		ArdaSports:   "trtsporyildiz",
-		AlemdarSport: "trtyildiz",
-		MahsunSports: "androstreamlivetrtsporyildiz",
-		PapazSports:  "100016",
-	},
-	{
-		Key: "trt1", Name: "TRT 1 HD", StreamID: 119, Category: "Ulusal",
-		LogoURL:      AssetBaseURL + "trt1.png",
-		Taraftarium:  "trt-1",
-		ArdaSports:   "trt1",
-		AlemdarSport: "trt1",
-		MahsunSports: "androstreamlivetrt1",
-		PapazSports:  "100017",
-	},
-	{
-		Key: "aspor", Name: "A SPOR HD", StreamID: 120, Category: "Spor",
-		LogoURL:      AssetBaseURL + "aspor.png",
-		Taraftarium:  "a-spor",
-		ArdaSports:   "aspor",
-		AlemdarSport: "aspor",
-		MahsunSports: "androstreamliveaspor",
-		PapazSports:  "100018",
-	},
-	{
-		Key: "tv85", Name: "TV 8.5 HD", StreamID: 121, Category: "Spor",
-		LogoURL:      AssetBaseURL + "tv85.png",
-		Taraftarium:  "tv-8-5",
-		ArdaSports:   "tv85",
-		AlemdarSport: "tv85",
-		MahsunSports: "androstreamlivetv85",
-		PapazSports:  "100019",
-	},
-	{
-		Key: "nbatv", Name: "NBA TV HD", StreamID: 122, Category: "Spor",
-		LogoURL:      AssetBaseURL + "nbatv.png",
-		Taraftarium:  "nba-tv",
-		ArdaSports:   "nbatv",
-		MahsunSports: "androstreamlivenbatv",
-	},
-	{
-		Key: "eurosport1", Name: "EUROSPORT 1 HD", StreamID: 123, Category: "Spor",
-		LogoURL:      AssetBaseURL + "eurosport.png",
-		Taraftarium:  "eurosport-1",
-		ArdaSports:   "eurosport1",
-		AlemdarSport: "eurosport1",
-		MahsunSports: "androstreamliveeurosport1",
-		PapazSports:  "100020",
-	},
-	{
-		Key: "eurosport2", Name: "EUROSPORT 2 HD", StreamID: 124, Category: "Spor",
-		LogoURL:      AssetBaseURL + "eurosport.png",
-		Taraftarium:  "eurosport-2",
-		ArdaSports:   "eurosport2",
-		AlemdarSport: "eurosport2",
-		MahsunSports: "androstreamliveeurosport2",
-		PapazSports:  "100021",
-	},
-	{
-		Key: "cbcsport", Name: "CBC SPORT HD", StreamID: 125, Category: "Spor",
-		LogoURL:      AssetBaseURL + "cbcsport.png",
-		Taraftarium:  "cbc-sport",
-		ArdaSports:   "cbcsport",
-		AlemdarSport: "cbcsport",
-		MahsunSports: "androstreamlivecbcsport",
-	},
-	{
-		Key: "idmantv", Name: "İDMAN TV HD", StreamID: 126, Category: "Spor",
-		LogoURL:      AssetBaseURL + "idmantv.png",
-		Taraftarium:  "idman-tv",
-		ArdaSports:   "idmantv",
-		AlemdarSport: "idmantv",
-		MahsunSports: "androstreamliveidmantv",
-	},
-	{
-		Key: "exxentv", Name: "EXXEN SPOR 1 HD", StreamID: 127, Category: "Spor",
-		LogoURL:      AssetBaseURL + "exxen.png",
-		Taraftarium:  "exxen-spor-1",
-		ArdaSports:   "exxenspor1",
-		AlemdarSport: "exxen1",
-		MahsunSports: "androstreamliveexxen1",
-		PapazSports:  "100022",
-	},
+// SportPlatformMap provides platform identifiers for sports channels.
+var SportPlatformMap = map[string]SportMapping{
+	"beinsports1":     {Taraftarium: "bein-sports-1", ArdaSports: "bein-sports-1", AlemdarSport: "bein1", MahsunSports: "androstreamlivebs1", PapazSports: "100001"},
+	"beinsports2":     {Taraftarium: "bein-sports-2", ArdaSports: "bein-sports-2", AlemdarSport: "bein2", MahsunSports: "androstreamlivebs2", PapazSports: "100002"},
+	"beinsports3":     {Taraftarium: "bein-sports-3", ArdaSports: "bein-sports-3", AlemdarSport: "bein3", MahsunSports: "androstreamlivebs3", PapazSports: "100003"},
+	"beinsports4":     {Taraftarium: "bein-sports-4", ArdaSports: "bein-sports-4", AlemdarSport: "bein4", MahsunSports: "androstreamlivebs4", PapazSports: "100004"},
+	"beinsports5":     {Taraftarium: "bein-sports-5", ArdaSports: "bein-sports-5", AlemdarSport: "bein5", MahsunSports: "androstreamlivebs5", PapazSports: "100005"},
+	"beinsportsmax1":  {Taraftarium: "bein-sports-max-1", ArdaSports: "bein-sports-max-1", AlemdarSport: "beinmax1", MahsunSports: "androstreamlivebsm1", PapazSports: "100006"},
+	"beinsportsmax2":  {Taraftarium: "bein-sports-max-2", ArdaSports: "bein-sports-max-2", AlemdarSport: "beinmax2", MahsunSports: "androstreamlivebsm2", PapazSports: "100007"},
+	"ssport":          {Taraftarium: "s-sport", ArdaSports: "ssport", AlemdarSport: "ssport1", MahsunSports: "androstreamlivess1", PapazSports: "100010"},
+	"ssport1":         {Taraftarium: "s-sport", ArdaSports: "ssport", AlemdarSport: "ssport1", MahsunSports: "androstreamlivess1", PapazSports: "100010"},
+	"ssport2":         {Taraftarium: "s-sport-2", ArdaSports: "ssport2", AlemdarSport: "ssport2", MahsunSports: "androstreamlivess2", PapazSports: "100011"},
+	"ssportplus":      {Taraftarium: "s-sport-plus", ArdaSports: "ssportplus", AlemdarSport: "ssport1", MahsunSports: "androstreamlivessplus1"},
+	"tivibuspor":      {AlemdarSport: "tivibu1", MahsunSports: "androstreamlivets", PapazSports: "100021"},
+	"tivibuspor1":     {AlemdarSport: "tivibu1", MahsunSports: "androstreamlivets1", PapazSports: "100021"},
+	"tivibuspor2":     {AlemdarSport: "tivibu2", MahsunSports: "androstreamlivets2", PapazSports: "100022"},
+	"tivibuspor3":     {AlemdarSport: "tivibu3", MahsunSports: "androstreamlivets3", PapazSports: "100023"},
+	"tivibuspor4":     {AlemdarSport: "tivibu4", MahsunSports: "androstreamlivets4", PapazSports: "100024"},
+	"smartspor1":      {AlemdarSport: "sporsmart", MahsunSports: "androstreamlivesm1", PapazSports: "100030"},
+	"sporsmart":       {AlemdarSport: "sporsmart", MahsunSports: "androstreamlivesm1", PapazSports: "100030"},
+	"smartspor2":      {AlemdarSport: "sporsmart2", MahsunSports: "androstreamlivesm2", PapazSports: "100031"},
+	"sporsmart2":      {AlemdarSport: "sporsmart2", MahsunSports: "androstreamlivesm2", PapazSports: "100031"},
+	"trtspor":         {Taraftarium: "trt-spor", ArdaSports: "trtspor", AlemdarSport: "trtspor"},
+	"trtsporyildiz":   {AlemdarSport: "trtspor2"},
+	"aspor":           {Taraftarium: "a-spor", ArdaSports: "aspor", AlemdarSport: "aspor", PapazSports: "100052"},
+	"tv85":            {AlemdarSport: "tv85", PapazSports: "100051"},
+	"nbatv":           {PapazSports: "100053", MahsunSports: "androstreamlivenbatv"},
+	"eurosport1":      {MahsunSports: "androstreamlivees1", PapazSports: "100056"},
+	"eurosport2":      {MahsunSports: "androstreamlivees2", PapazSports: "100057"},
+	"cbcsport":        {MahsunSports: "androstreamlivecbcs"},
+	"idmantv":         {MahsunSports: "androstreamliveidm"},
+	"exxentv":         {MahsunSports: "androstreamliveexn"},
+	"exxensports1":    {MahsunSports: "androstreamliveexn1"},
+	"exxensports2":    {MahsunSports: "androstreamliveexn2"},
+	"exxensports3":    {MahsunSports: "androstreamliveexn3"},
+	"exxensports4":    {MahsunSports: "androstreamliveexn4"},
+	"exxensports5":    {MahsunSports: "androstreamliveexn5"},
+	"exxensports6":    {MahsunSports: "androstreamliveexn6"},
+	"exxensports7":    {MahsunSports: "androstreamliveexn7"},
+	"exxensports8":    {MahsunSports: "androstreamliveexn8"},
+	"tabiispor":       {MahsunSports: "androstreamlivetb"},
+	"tabiispor1":      {MahsunSports: "androstreamlivetb1"},
+	"tabiispor2":      {MahsunSports: "androstreamlivetb2"},
+	"tabiispor3":      {MahsunSports: "androstreamlivetb3"},
+	"tabiispor4":      {MahsunSports: "androstreamlivetb4"},
+	"tabiispor5":      {MahsunSports: "androstreamlivetb5"},
+	"tabiispor6":      {MahsunSports: "androstreamlivetb6"},
+	"tabiispor7":      {MahsunSports: "androstreamlivetb7"},
+	"tabiispor8":      {MahsunSports: "androstreamlivetb8"},
 }
 
+// ChannelList contains all parsed channels from anthology's canli.m3u.
+var ChannelList []ChannelMapping
 var channelMapByKey = make(map[string]ChannelMapping)
 var channelMapByID = make(map[int]ChannelMapping)
+var modelsOnce sync.Once
 
-func init() {
-	for _, ch := range ChannelList {
-		channelMapByKey[ch.Key] = ch
-		channelMapByID[ch.StreamID] = ch
+func cleanKey(s string) string {
+	s = strings.ToLower(s)
+	var sb strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			sb.WriteRune(r)
+		}
 	}
+	return sb.String()
 }
 
-// FindChannelByKey finds a channel mapping by its key or aliases.
+// InitChannels loads all 137+ channels from anthology's canli.m3u.
+func InitChannels() {
+	modelsOnce.Do(func() {
+		content := EmbeddedCanliM3U
+
+		// Check if anthology canli.m3u is available on disk
+		if wd, err := os.Getwd(); err == nil {
+			candDisk := filepath.Join(filepath.Dir(wd), "anthology", "providers", "M3U", "Liste", "canli.m3u")
+			if diskBytes, err := os.ReadFile(candDisk); err == nil && len(diskBytes) > 0 {
+				content = diskBytes
+			}
+		}
+
+		lines := strings.Split(string(content), "\n")
+		var currentINF string
+		streamCounter := 100
+
+		nameRe := regexp.MustCompile(`,([^,]+)$`)
+		groupRe := regexp.MustCompile(`group-title="([^"]+)"`)
+		logoRe := regexp.MustCompile(`tvg-logo="([^"]+)"`)
+		idRe := regexp.MustCompile(`tvg-id="([^"]+)"`)
+		backupRe := regexp.MustCompile(`tvg-backup="([^"]+)"`)
+
+		for _, rawLine := range lines {
+			line := strings.TrimSpace(rawLine)
+			if line == "" {
+				continue
+			}
+
+			if strings.HasPrefix(line, "#EXTINF") {
+				currentINF = line
+			} else if !strings.HasPrefix(line, "#") && currentINF != "" {
+				streamCounter++
+				directURL := line
+
+				// Parse attributes
+				name := "Kanal"
+				if m := nameRe.FindStringSubmatch(currentINF); len(m) > 1 {
+					name = strings.TrimSpace(m[1])
+				}
+
+				category := "Genel"
+				if m := groupRe.FindStringSubmatch(currentINF); len(m) > 1 {
+					category = strings.TrimSpace(m[1])
+					category = strings.TrimPrefix(category, "🇹🇷 ")
+				}
+
+				logo := ""
+				if m := logoRe.FindStringSubmatch(currentINF); len(m) > 1 {
+					logo = strings.TrimSpace(m[1])
+				}
+
+				tvgID := ""
+				if m := idRe.FindStringSubmatch(currentINF); len(m) > 1 {
+					tvgID = strings.TrimSpace(m[1])
+				}
+
+				backupURL := ""
+				if m := backupRe.FindStringSubmatch(currentINF); len(m) > 1 {
+					backupURL = strings.TrimSpace(m[1])
+				}
+
+				// Build normalized key
+				rawKey := strings.TrimSuffix(tvgID, ".tr")
+				if rawKey == "" {
+					rawKey = name
+				}
+				key := cleanKey(rawKey)
+
+				ch := ChannelMapping{
+					Key:       key,
+					Name:      name,
+					StreamID:  streamCounter,
+					Category:  category,
+					LogoURL:   logo,
+					DirectURL: directURL,
+					BackupURL: backupURL,
+				}
+
+				// Check sport mapping
+				if sm, ok := findSportPlatform(key); ok {
+					ch.Taraftarium = sm.Taraftarium
+					ch.ArdaSports = sm.ArdaSports
+					ch.AlemdarSport = sm.AlemdarSport
+					ch.MahsunSports = sm.MahsunSports
+					ch.PapazSports = sm.PapazSports
+				}
+
+				ChannelList = append(ChannelList, ch)
+				channelMapByKey[ch.Key] = ch
+				channelMapByID[ch.StreamID] = ch
+
+				currentINF = ""
+			}
+		}
+	})
+}
+
+func findSportPlatform(key string) (SportMapping, bool) {
+	if sm, ok := SportPlatformMap[key]; ok {
+		return sm, true
+	}
+	// Try substring match for sports
+	for k, sm := range SportPlatformMap {
+		if strings.Contains(key, k) || strings.Contains(k, key) {
+			return sm, true
+		}
+	}
+	return SportMapping{}, false
+}
+
+func init() {
+	InitChannels()
+}
+
+// FindChannelByKey finds a channel mapping by its key.
 func FindChannelByKey(key string) (ChannelMapping, bool) {
+	InitChannels()
+	key = cleanKey(key)
 	ch, ok := channelMapByKey[key]
-	return ch, ok
+	if ok {
+		return ch, true
+	}
+	// Fallback fuzzy key matching
+	for k, c := range channelMapByKey {
+		if strings.Contains(k, key) || strings.Contains(key, k) {
+			return c, true
+		}
+	}
+	return ChannelMapping{}, false
 }
 
 // FindChannelByID finds a channel mapping by its Xtream Codes StreamID.
 func FindChannelByID(id int) (ChannelMapping, bool) {
+	InitChannels()
 	ch, ok := channelMapByID[id]
 	return ch, ok
 }

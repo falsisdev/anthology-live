@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"anthology-live/auth"
@@ -111,11 +112,36 @@ func HandleXtreamAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Category mapping
+	getCategoryDetails := func(catName string) (id string, displayName string) {
+		switch strings.ToUpper(catName) {
+		case "SPOR KANALLARI", "SPOR":
+			return "1", "⚽️ Spor Kanalları"
+		case "ULUSAL KANALLAR", "ULUSAL":
+			return "2", "📺 Ulusal Kanallar"
+		case "HABER KANALLARI", "HABER":
+			return "3", "📰 Haber Kanalları"
+		case "SİNEMA KANALLARI", "SINEMA KANALLARI", "SİNEMA", "SINEMA":
+			return "4", "🎬 Sinema Kanalları"
+		case "BELGESEL & ÇOCUK", "BELGESEL & COCUK", "BELGESEL":
+			return "5", "🦁 Belgesel & Çocuk"
+		case "MÜZİK & EĞLENCE", "MUZIK & EGLENCE", "MÜZİK", "MUZIK":
+			return "6", "🎵 Müzik & Eğlence"
+		default:
+			return "7", "✨ Diğer Kanallar"
+		}
+	}
+
 	// 2. Categories
 	if action == "get_live_categories" {
 		cats := []XtreamCategory{
 			{CategoryID: "1", CategoryName: "⚽️ Spor Kanalları", ParentID: 0},
 			{CategoryID: "2", CategoryName: "📺 Ulusal Kanallar", ParentID: 0},
+			{CategoryID: "3", CategoryName: "📰 Haber Kanalları", ParentID: 0},
+			{CategoryID: "4", CategoryName: "🎬 Sinema Kanalları", ParentID: 0},
+			{CategoryID: "5", CategoryName: "🦁 Belgesel & Çocuk", ParentID: 0},
+			{CategoryID: "6", CategoryName: "🎵 Müzik & Eğlence", ParentID: 0},
+			{CategoryID: "7", CategoryName: "✨ Diğer Kanallar", ParentID: 0},
 		}
 		json.NewEncoder(w).Encode(cats)
 		return
@@ -127,10 +153,7 @@ func HandleXtreamAPI(w http.ResponseWriter, r *http.Request) {
 		streams := make([]XtreamLiveStream, 0, len(engine.ChannelList))
 
 		for idx, ch := range engine.ChannelList {
-			catID := "1"
-			if ch.Category == "Ulusal" {
-				catID = "2"
-			}
+			catID, _ := getCategoryDetails(ch.Category)
 			if categoryFilter != "" && categoryFilter != catID {
 				continue
 			}

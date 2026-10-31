@@ -144,10 +144,8 @@
             <div class="sidebar-search">
                 <input type="text" id="searchInput" class="search-input" placeholder="Kanal ara... (Örn: BeIN, S Sport)">
             </div>
-            <div class="category-tabs">
-                <button class="cat-tab active" onclick="filterCategory('all', this)">Tümü (27)</button>
-                <button class="cat-tab" onclick="filterCategory('Spor', this)">Spor</button>
-                <button class="cat-tab" onclick="filterCategory('Ulusal', this)">Ulusal</button>
+            <div class="category-tabs" id="categoryTabs">
+                <button class="cat-tab active" onclick="filterCategory('all', this)">Tümü</button>
             </div>
             <div class="channel-list" id="channelList"></div>
         </div>
@@ -203,15 +201,26 @@
 
         async function loadChannels() {
             try {
+                // Fetch categories
+                const catRes = await fetch('/player_api.php?action=get_live_categories');
+                const catList = await catRes.json();
+                const catMap = {};
+                catList.forEach(c => { catMap[c.category_id] = c.category_name; });
+
                 const res = await fetch('/player_api.php?action=get_live_streams');
                 const list = await res.json();
                 channels = list.map(item => ({
                     id: item.stream_id,
                     name: item.name,
                     key: item.epg_channel_id.replace('.tr', ''),
-                    category: item.category_id === '2' ? 'Ulusal' : 'Spor',
+                    category: catMap[item.category_id] || 'Genel',
+                    categoryId: item.category_id,
                     logo: item.stream_icon
                 }));
+
+                // Render category tabs dynamically
+                renderCategoryTabs(catList);
+
                 renderChannelList(channels);
                 if (channels.length > 0) {
                     playChannel(channels[0], 'auto');
@@ -219,6 +228,21 @@
             } catch (e) {
                 console.error("Kanal listesi alınamadı:", e);
             }
+        }
+
+        function renderCategoryTabs(catList) {
+            const tabsContainer = document.getElementById('categoryTabs');
+            tabsContainer.innerHTML = `<button class="cat-tab active" onclick="filterCategory('all', this)">Tümü (${channels.length})</button>`;
+            catList.forEach(c => {
+                const count = channels.filter(ch => ch.categoryId === c.category_id).length;
+                if (count > 0) {
+                    const btn = document.createElement('button');
+                    btn.className = 'cat-tab';
+                    btn.innerText = `${c.category_name.replace(/^[^\s]+ /, '')} (${count})`;
+                    btn.onclick = () => filterCategory(c.category_id, btn);
+                    tabsContainer.appendChild(btn);
+                }
+            });
         }
 
         async function loadSourcesForChannel(channelKey, currentSelected) {
@@ -334,7 +358,7 @@
         function filterList() {
             const query = document.getElementById('searchInput').value.toLowerCase();
             return channels.filter(ch => {
-                const matchCat = currentCat === 'all' || ch.category === currentCat;
+                const matchCat = currentCat === 'all' || ch.categoryId === currentCat;
                 const matchQuery = ch.name.toLowerCase().includes(query) || ch.key.toLowerCase().includes(query);
                 return matchCat && matchQuery;
             });
