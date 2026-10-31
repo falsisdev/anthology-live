@@ -48,7 +48,11 @@ func HandleLiveStream(w http.ResponseWriter, r *http.Request) {
 
 	var channelKey string
 	if streamID, err := strconv.Atoi(channelIdentifier); err == nil {
-		if ch, ok := engine.FindChannelByID(streamID); ok {
+		baseID, virtProv := engine.ProviderFromVirtualID(streamID)
+		if source == "" && virtProv != "" {
+			source = virtProv
+		}
+		if ch, ok := engine.FindChannelByID(baseID); ok {
 			channelKey = ch.Key
 		}
 	} else {

@@ -246,9 +246,9 @@ func ResolveBestStream(ctx context.Context, channelKey string) (*StreamResult, e
 	}()
 
 	priorityWeight := map[string]int{
-		"alemdarsport": 5,
+		"taraftarium":  5, // Lowest A/V latency and best synchronization
 		"ardasports":   4,
-		"taraftarium":  3,
+		"alemdarsport": 3,
 		"mahsunsports": 2,
 		"papazsports":  1,
 		"direct":       6, // Direct official streams have highest priority if valid

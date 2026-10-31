@@ -39,11 +39,28 @@ func HandleM3UPlaylist(w http.ResponseWriter, r *http.Request) {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("#EXTM3U x-tvg-url=\"%s\"\n\n", cfg.EPGURL))
 
-	for _, ch := range engine.ChannelList {
-		groupTitle := "Spor Kanalları"
-		if ch.Category == "Ulusal" {
-			groupTitle = "Ulusal Kanallar"
+	// Category mapping
+	getCategoryTitle := func(catName string) string {
+		switch strings.ToUpper(catName) {
+		case "SPOR KANALLARI", "SPOR":
+			return "Spor Kanalları"
+		case "ULUSAL KANALLAR", "ULUSAL":
+			return "Ulusal Kanallar"
+		case "HABER KANALLARI", "HABER":
+			return "Haber Kanalları"
+		case "SİNEMA KANALLARI", "SINEMA KANALLARI", "SİNEMA", "SINEMA":
+			return "Sinema Kanalları"
+		case "BELGESEL & ÇOCUK", "BELGESEL & COCUK", "BELGESEL":
+			return "Belgesel & Çocuk"
+		case "MÜZİK & EĞLENCE", "MUZIK & EGLENCE", "MÜZİK", "MUZIK":
+			return "Müzik & Eğlence"
+		default:
+			return "Diğer Kanallar"
 		}
+	}
+
+	for _, ch := range engine.ChannelList {
+		groupTitle := getCategoryTitle(ch.Category)
 
 		sb.WriteString(fmt.Sprintf("#EXTINF:-1 tvg-id=\"%s.tr\" tvg-name=\"%s\" tvg-logo=\"%s\" group-title=\"%s\",%s\n",
 			ch.Key, ch.Name, ch.LogoURL, groupTitle, ch.Name))

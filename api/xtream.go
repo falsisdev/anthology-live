@@ -142,6 +142,7 @@ func HandleXtreamAPI(w http.ResponseWriter, r *http.Request) {
 			{CategoryID: "5", CategoryName: "🦁 Belgesel & Çocuk", ParentID: 0},
 			{CategoryID: "6", CategoryName: "🎵 Müzik & Eğlence", ParentID: 0},
 			{CategoryID: "7", CategoryName: "✨ Diğer Kanallar", ParentID: 0},
+			{CategoryID: "10", CategoryName: "🔄 Alternatif Spor Yayınları", ParentID: 0},
 		}
 		json.NewEncoder(w).Encode(cats)
 		return
@@ -150,29 +151,66 @@ func HandleXtreamAPI(w http.ResponseWriter, r *http.Request) {
 	// 3. Live Streams Catalog
 	if action == "get_live_streams" {
 		categoryFilter := r.URL.Query().Get("category_id")
-		streams := make([]XtreamLiveStream, 0, len(engine.ChannelList))
+		streams := make([]XtreamLiveStream, 0, len(engine.ChannelList)*2)
 
-		for idx, ch := range engine.ChannelList {
+		numCounter := 1
+		for _, ch := range engine.ChannelList {
 			catID, _ := getCategoryDetails(ch.Category)
-			if categoryFilter != "" && categoryFilter != catID {
+			if categoryFilter == "" || categoryFilter == catID {
+				streams = append(streams, XtreamLiveStream{
+					Num:               numCounter,
+					Name:              ch.Name,
+					StreamType:        "live",
+					StreamID:          ch.StreamID,
+					StreamIcon:        ch.LogoURL,
+					EPGChannelID:      fmt.Sprintf("%s.tr", ch.Key),
+					Added:             strconv.FormatInt(now.Unix(), 10),
+					CategoryID:        catID,
+					CustomSID:         "",
+					TVArchive:         0,
+					DirectSource:      "",
+					TVArchiveDuration: 0,
+				})
+				numCounter++
+			}
+		}
+
+		// Also expose alternative sources under category 10 (or when no filter is applied)
+		for _, ch := range engine.ChannelList {
+			providers := engine.GetAvailableProviders(ch.Key)
+			if len(providers) <= 2 {
+				// Only auto or 1 provider available, skip duplicating
 				continue
 			}
 
-			streams = append(streams, XtreamLiveStream{
-				Num:               idx + 1,
-				Name:              ch.Name,
-				StreamType:        "live",
-				StreamID:          ch.StreamID,
-				StreamIcon:        ch.LogoURL,
-				EPGChannelID:      fmt.Sprintf("%s.tr", ch.Key),
-				Added:             strconv.FormatInt(now.Unix(), 10),
-				CategoryID:        catID,
-				CustomSID:         "",
-				TVArchive:         0,
-				DirectSource:      "",
-				TVArchiveDuration: 0,
-			})
+			for _, p := range providers {
+				if p.ID == "auto" {
+					continue
+				}
+				altCatID := "10"
+				if categoryFilter != "" && categoryFilter != altCatID {
+					continue
+				}
+
+				virtID := engine.VirtualIDForProvider(ch.StreamID, p.ID)
+				streams = append(streams, XtreamLiveStream{
+					Num:               numCounter,
+					Name:              fmt.Sprintf("%s [%s]", ch.Name, p.Name),
+					StreamType:        "live",
+					StreamID:          virtID,
+					StreamIcon:        ch.LogoURL,
+					EPGChannelID:      fmt.Sprintf("%s.tr", ch.Key),
+					Added:             strconv.FormatInt(now.Unix(), 10),
+					CategoryID:        altCatID,
+					CustomSID:         "",
+					TVArchive:         0,
+					DirectSource:      "",
+					TVArchiveDuration: 0,
+				})
+				numCounter++
+			}
 		}
+
 		json.NewEncoder(w).Encode(streams)
 		return
 	}

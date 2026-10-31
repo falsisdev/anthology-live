@@ -236,9 +236,63 @@ func FindChannelByKey(key string) (ChannelMapping, bool) {
 	return ChannelMapping{}, false
 }
 
-// FindChannelByID finds a channel mapping by its Xtream Codes StreamID.
+// Provider offsets for virtual StreamIDs in Xtream Codes API
+const (
+	OffsetAlemdar    = 10000
+	OffsetArda       = 20000
+	OffsetTaraftarium = 30000
+	OffsetMahsun     = 40000
+	OffsetPapaz      = 50000
+	OffsetDirect     = 60000
+)
+
+// ProviderFromVirtualID returns the base channel ID and the specific provider name.
+func ProviderFromVirtualID(virtualID int) (baseID int, provider string) {
+	if virtualID >= OffsetDirect {
+		return virtualID - OffsetDirect, "direct"
+	}
+	if virtualID >= OffsetPapaz {
+		return virtualID - OffsetPapaz, "papazsports"
+	}
+	if virtualID >= OffsetMahsun {
+		return virtualID - OffsetMahsun, "mahsunsports"
+	}
+	if virtualID >= OffsetTaraftarium {
+		return virtualID - OffsetTaraftarium, "taraftarium"
+	}
+	if virtualID >= OffsetArda {
+		return virtualID - OffsetArda, "ardasports"
+	}
+	if virtualID >= OffsetAlemdar {
+		return virtualID - OffsetAlemdar, "alemdarsport"
+	}
+	return virtualID, ""
+}
+
+// VirtualIDForProvider returns the virtual StreamID for a channel and provider.
+func VirtualIDForProvider(baseID int, provider string) int {
+	switch strings.ToLower(provider) {
+	case "alemdarsport", "alemdar":
+		return OffsetAlemdar + baseID
+	case "ardasports", "arda", "selcuk":
+		return OffsetArda + baseID
+	case "taraftarium", "taraftarium24":
+		return OffsetTaraftarium + baseID
+	case "mahsunsports", "mahsun":
+		return OffsetMahsun + baseID
+	case "papazsports", "papaz":
+		return OffsetPapaz + baseID
+	case "direct":
+		return OffsetDirect + baseID
+	default:
+		return baseID
+	}
+}
+
+// FindChannelByID finds a channel mapping by its Xtream Codes StreamID (including virtual IDs).
 func FindChannelByID(id int) (ChannelMapping, bool) {
 	InitChannels()
-	ch, ok := channelMapByID[id]
+	baseID, _ := ProviderFromVirtualID(id)
+	ch, ok := channelMapByID[baseID]
 	return ch, ok
 }
