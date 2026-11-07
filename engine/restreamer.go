@@ -42,7 +42,7 @@ func GetRestreamer() *RestreamerEngine {
 			segmentCache: make(map[string]CachedSegment),
 			streamCache:  make(map[string]CachedManifest),
 			httpClient: &http.Client{
-				Timeout: 10 * time.Second,
+				Timeout: 15 * time.Second,
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 				},
@@ -186,23 +186,54 @@ func (r *RestreamerEngine) RewriteManifest(ctx context.Context, channelKey, prov
 	}
 
 	resp, err := r.httpClient.Do(req)
-	if err != nil {
+	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		r.InvalidateStream(channelKey)
-		return "", err
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		r.InvalidateStream(channelKey)
+		// Failover to BackupURL if direct official stream failed
+		if ch, ok := FindChannelByKey(channelKey); ok && ch.BackupURL != "" && (stream.Provider == "direct" || stream.URL == ch.DirectURL) {
+			bReq, bErr := http.NewRequestWithContext(ctx, "GET", ch.BackupURL, nil)
+			if bErr == nil {
+				bReq.Header.Set("User-Agent", DefaultUA)
+				bResp, bDoErr := r.httpClient.Do(bReq)
+				if bDoErr == nil && bResp.StatusCode >= 200 && bResp.StatusCode < 400 {
+					defer bResp.Body.Close()
+					bBytes, bReadErr := io.ReadAll(bResp.Body)
+					if bReadErr == nil && len(bBytes) > 0 {
+						r.mu.Lock()
+						r.streamCache[channelKey+":auto"] = CachedManifest{
+							Stream: &StreamResult{
+								ChannelKey:  ch.Key,
+								ChannelName: ch.Name,
+								URL:         ch.BackupURL,
+								Headers:     map[string]string{"User-Agent": DefaultUA},
+								Provider:    "backup",
+							},
+							CreatedAt: time.Now(),
+						}
+						r.mu.Unlock()
+						return r.translateManifestBytes(bBytes, ch.BackupURL, map[string]string{"User-Agent": DefaultUA}, provider, baseURL, authQuery)
+					}
+				}
+			}
+		}
+
+		if err != nil {
+			return "", err
+		}
 		return "", fmt.Errorf("upstream manifest status: %d", resp.StatusCode)
 	}
+	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
 
-	upstreamBase, err := url.Parse(stream.URL)
+	return r.translateManifestBytes(bodyBytes, stream.URL, stream.Headers, provider, baseURL, authQuery)
+}
+
+func (r *RestreamerEngine) translateManifestBytes(bodyBytes []byte, streamURL string, headers map[string]string, provider, baseURL, authQuery string) (string, error) {
+	upstreamBase, err := url.Parse(streamURL)
 	if err != nil {
 		return "", err
 	}
@@ -210,9 +241,9 @@ func (r *RestreamerEngine) RewriteManifest(ctx context.Context, channelKey, prov
 	lines := strings.Split(string(bodyBytes), "\n")
 	rewritten := make([]string, 0, len(lines))
 
-	refEnc := base64.RawURLEncoding.EncodeToString([]byte(stream.Headers["Referer"]))
-	origEnc := base64.RawURLEncoding.EncodeToString([]byte(stream.Headers["Origin"]))
-	tokenEnc := base64.RawURLEncoding.EncodeToString([]byte(stream.Headers["usertoken"]))
+	refEnc := base64.RawURLEncoding.EncodeToString([]byte(headers["Referer"]))
+	origEnc := base64.RawURLEncoding.EncodeToString([]byte(headers["Origin"]))
+	tokenEnc := base64.RawURLEncoding.EncodeToString([]byte(headers["usertoken"]))
 
 	// Forward specific source if chosen
 	if provider != "" && provider != "auto" {

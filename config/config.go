@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -11,8 +12,8 @@ import (
 )
 
 const (
-	DefaultPort     = 3555
-	DefaultEPGURL   = "https://epg.share247.net/epg.xml.gz"
+	DefaultPort       = 3555
+	DefaultEPGURL     = "https://epg.share247.net/epg.xml.gz"
 	DefaultServerName = "Anthology Live"
 )
 
@@ -40,6 +41,31 @@ type Config struct {
 	ResolverTTL  time.Duration
 	HealthTicker time.Duration
 	Platforms    PlatformURLs
+}
+
+type rawConfigJSON struct {
+	Port int `json:"port"`
+	URLs struct {
+		Live struct {
+			Taraftarium struct {
+				Base       string `json:"base"`
+				APIBase    string `json:"api_base"`
+				BaseNumber int    `json:"base_number"`
+			} `json:"taraftarium"`
+			ArdaSports struct {
+				Base string `json:"base"`
+			} `json:"ardasports"`
+			AlemdarSport struct {
+				Base string `json:"base"`
+			} `json:"alemdarsport"`
+			MahsunSports struct {
+				Base string `json:"base"`
+			} `json:"mahsunsports"`
+			PapazSports struct {
+				Base string `json:"base"`
+			} `json:"papazsports"`
+		} `json:"live"`
+	} `json:"urls"`
 }
 
 var (
@@ -130,6 +156,50 @@ func Get() *Config {
 			epgURL = DefaultEPGURL
 		}
 
+		defaultPlatforms := PlatformURLs{
+			TaraftariumBase:    "https://taraftarium24-246.top/",
+			TaraftariumAPIBase: "https://teletv15.top",
+			TaraftariumBaseNum: 246,
+			ArdaBase:           "https://selcuksporkral1.cc",
+			AlemdarBase:        "https://alemdarsport.cfd",
+			MahsunBase:         "https://mahsunsports58.xyz",
+			PapazBase:          "https://www.papazsports1033.pro",
+		}
+
+		// Try loading config.json
+		for _, candPath := range []string{"config.json", filepath.Join("..", "config.json")} {
+			if data, err := os.ReadFile(candPath); err == nil {
+				var r rawConfigJSON
+				if err := json.Unmarshal(data, &r); err == nil {
+					if r.Port > 0 && os.Getenv("PORT") == "" {
+						port = r.Port
+					}
+					if r.URLs.Live.Taraftarium.Base != "" {
+						defaultPlatforms.TaraftariumBase = r.URLs.Live.Taraftarium.Base
+					}
+					if r.URLs.Live.Taraftarium.APIBase != "" {
+						defaultPlatforms.TaraftariumAPIBase = r.URLs.Live.Taraftarium.APIBase
+					}
+					if r.URLs.Live.Taraftarium.BaseNumber > 0 {
+						defaultPlatforms.TaraftariumBaseNum = r.URLs.Live.Taraftarium.BaseNumber
+					}
+					if r.URLs.Live.ArdaSports.Base != "" {
+						defaultPlatforms.ArdaBase = r.URLs.Live.ArdaSports.Base
+					}
+					if r.URLs.Live.AlemdarSport.Base != "" {
+						defaultPlatforms.AlemdarBase = r.URLs.Live.AlemdarSport.Base
+					}
+					if r.URLs.Live.MahsunSports.Base != "" {
+						defaultPlatforms.MahsunBase = r.URLs.Live.MahsunSports.Base
+					}
+					if r.URLs.Live.PapazSports.Base != "" {
+						defaultPlatforms.PapazBase = r.URLs.Live.PapazSports.Base
+					}
+					break
+				}
+			}
+		}
+
 		globalCfg = &Config{
 			Host:         "0.0.0.0",
 			Port:         port,
@@ -140,15 +210,7 @@ func Get() *Config {
 			SegmentTTL:   25 * time.Second,
 			ResolverTTL:  60 * time.Second,
 			HealthTicker: 15 * time.Second,
-			Platforms: PlatformURLs{
-				TaraftariumBase:    "https://taraftarium24-245.top/",
-				TaraftariumAPIBase: "https://teletv15.top",
-				TaraftariumBaseNum: 245,
-				ArdaBase:           "https://selcuksporkral1.cc",
-				AlemdarBase:        "https://alemdarsport.cfd",
-				MahsunBase:         "https://mahsunsports55.xyz",
-				PapazBase:          "https://www.papazsports1028.pro",
-			},
+			Platforms:    defaultPlatforms,
 		}
 	})
 	return globalCfg

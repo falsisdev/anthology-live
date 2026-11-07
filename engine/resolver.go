@@ -21,7 +21,7 @@ var (
 	DefaultUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 	resolverHTTP = &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
@@ -33,14 +33,15 @@ var (
 		},
 	}
 
-	flotfRegex  = regexp.MustCompile(`flotfUrl\s*=\s*[` + "`" + `'""](https:\/\/[^` + "`" + `'""]+index\.m3u8)`)
-	m3u8Regex   = regexp.MustCompile(`https?:\/\/[^"'\s\\]+\.m3u8`)
+	flotfRegex   = regexp.MustCompile(`flotfUrl\s*=\s*[` + "`" + `'""](https:\/\/[^` + "`" + `'""]+index\.m3u8)`)
+	m3u8Regex    = regexp.MustCompile(`https?:\/\/[^"'\s\\]+\.m3u8`)
 	ardaIframeRe = regexp.MustCompile(`src="(/loadstream\.php\?[^"]+)"`)
-	ardaB64Re   = regexp.MustCompile(`['"](d2lu[A-Za-z0-9+/=]+)\|`)
+	ardaB64Re    = regexp.MustCompile(`['"](d2lu[A-Za-z0-9+/=]+)\|`)
 
-	mahsunBaseCache string
-	mahsunBaseMu    sync.RWMutex
-	mahsunBaseTime  time.Time
+	mahsunCachedBases     []string
+	lastWorkingMahsunBase string
+	mahsunBasesMu         sync.RWMutex
+	mahsunBasesTime       time.Time
 )
 
 // StreamResult holds resolved stream metadata.
@@ -68,6 +69,8 @@ func NormalizeProvider(p string) string {
 		return "papazsports"
 	case "direct", "resmi", "official":
 		return "direct"
+	case "backup", "yedek":
+		return "backup"
 	default:
 		return p
 	}
@@ -93,6 +96,12 @@ func GetAvailableProviders(channelKey string) []ProviderInfo {
 	if ch.DirectURL != "" {
 		providers = append(providers, ProviderInfo{ID: "direct", Name: "📡 Resmi / Doğrudan Akış", Available: true})
 	}
+	if ch.BackupURL != "" {
+		providers = append(providers, ProviderInfo{ID: "backup", Name: "🛡 Yedek Akış", Available: true})
+	}
+	if ch.MahsunSports != "" {
+		providers = append(providers, ProviderInfo{ID: "mahsunsports", Name: "Mahsun Sports", Available: true})
+	}
 	if ch.AlemdarSport != "" {
 		providers = append(providers, ProviderInfo{ID: "alemdarsport", Name: "Alemdar Sport", Available: true})
 	}
@@ -101,9 +110,6 @@ func GetAvailableProviders(channelKey string) []ProviderInfo {
 	}
 	if ch.Taraftarium != "" {
 		providers = append(providers, ProviderInfo{ID: "taraftarium", Name: "Taraftarium24", Available: true})
-	}
-	if ch.MahsunSports != "" {
-		providers = append(providers, ProviderInfo{ID: "mahsunsports", Name: "Mahsun Sports", Available: true})
 	}
 	if ch.PapazSports != "" {
 		providers = append(providers, ProviderInfo{ID: "papazsports", Name: "Papaz Sports", Available: true})
@@ -119,10 +125,10 @@ func ResolveStream(ctx context.Context, channelKey, provider string) (*StreamRes
 		return nil, fmt.Errorf("kanal bulunamadı: %s", channelKey)
 	}
 
-	// 1. Direct stream request
+	// 1. Direct stream request (with backup fallback)
 	if provider == "direct" {
 		if ch.DirectURL != "" {
-			return &StreamResult{
+			cand := &StreamResult{
 				ChannelKey:  ch.Key,
 				ChannelName: ch.Name,
 				URL:         ch.DirectURL,
@@ -130,9 +136,51 @@ func ResolveStream(ctx context.Context, channelKey, provider string) (*StreamRes
 					"User-Agent": DefaultUA,
 				},
 				Provider: "direct",
+			}
+			if testStreamAlive(ctx, cand) {
+				return cand, nil
+			}
+		}
+		// If DirectURL is dead or not available, seamlessly fall back to BackupURL!
+		if ch.BackupURL != "" {
+			backupCand := &StreamResult{
+				ChannelKey:  ch.Key,
+				ChannelName: ch.Name,
+				URL:         ch.BackupURL,
+				Headers: map[string]string{
+					"User-Agent": DefaultUA,
+				},
+				Provider: "backup",
+			}
+			if testStreamAlive(ctx, backupCand) {
+				return backupCand, nil
+			}
+		}
+		if ch.DirectURL != "" {
+			return &StreamResult{
+				ChannelKey:  ch.Key,
+				ChannelName: ch.Name,
+				URL:         ch.DirectURL,
+				Headers:     map[string]string{"User-Agent": DefaultUA},
+				Provider:    "direct",
 			}, nil
 		}
 		return nil, fmt.Errorf("bu kanal için doğrudan resmi akış bulunmuyor")
+	}
+
+	if provider == "backup" {
+		if ch.BackupURL != "" {
+			return &StreamResult{
+				ChannelKey:  ch.Key,
+				ChannelName: ch.Name,
+				URL:         ch.BackupURL,
+				Headers: map[string]string{
+					"User-Agent": DefaultUA,
+				},
+				Provider: "backup",
+			}, nil
+		}
+		return nil, fmt.Errorf("bu kanal için tanımlı yedek akış bulunmuyor")
 	}
 
 	// 2. Auto selection
@@ -178,8 +226,36 @@ func ResolveBestStream(ctx context.Context, channelKey string) (*StreamResult, e
 		return nil, nil
 	}
 
-	// For non-sports channels with direct official stream, return immediately
+	// For non-sports channels with direct official stream, test direct and backup
 	if ch.Taraftarium == "" && ch.ArdaSports == "" && ch.AlemdarSport == "" && ch.MahsunSports == "" {
+		if ch.DirectURL != "" {
+			cand := &StreamResult{
+				ChannelKey:  ch.Key,
+				ChannelName: ch.Name,
+				URL:         ch.DirectURL,
+				Headers: map[string]string{
+					"User-Agent": DefaultUA,
+				},
+				Provider: "direct",
+			}
+			if testStreamAlive(ctx, cand) {
+				return cand, nil
+			}
+		}
+		if ch.BackupURL != "" {
+			backupCand := &StreamResult{
+				ChannelKey:  ch.Key,
+				ChannelName: ch.Name,
+				URL:         ch.BackupURL,
+				Headers: map[string]string{
+					"User-Agent": DefaultUA,
+				},
+				Provider: "backup",
+			}
+			if testStreamAlive(ctx, backupCand) {
+				return backupCand, nil
+			}
+		}
 		if ch.DirectURL != "" {
 			return &StreamResult{
 				ChannelKey:  ch.Key,
@@ -198,18 +274,19 @@ func ResolveBestStream(ctx context.Context, channelKey string) (*StreamResult, e
 		resolver func(context.Context, ChannelMapping) (*StreamResult, error)
 	}
 
+	// Order resolvers: MahsunSports & AlemdarSport are highest probability working resolvers
 	jobs := []providerJob{
+		{"mahsunsports", resolveMahsun},
 		{"alemdarsport", resolveAlemdar},
 		{"ardasports", resolveArda},
 		{"taraftarium", resolveTaraftarium},
-		{"mahsunsports", resolveMahsun},
 		{"papazsports", resolvePapaz},
 	}
 
-	ctxTimeout, cancel := context.WithTimeout(ctx, 4500*time.Millisecond)
+	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	resultChan := make(chan *StreamResult, len(jobs)+1)
+	resultChan := make(chan *StreamResult, len(jobs)+2)
 	var wg sync.WaitGroup
 
 	for _, j := range jobs {
@@ -240,18 +317,35 @@ func ResolveBestStream(ctx context.Context, channelKey string) (*StreamResult, e
 		}()
 	}
 
+	// Also check backup URL if available
+	if ch.BackupURL != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resultChan <- &StreamResult{
+				URL:      ch.BackupURL,
+				Headers:  map[string]string{"User-Agent": DefaultUA},
+				Provider: "backup",
+			}
+		}()
+	}
+
 	go func() {
 		wg.Wait()
 		close(resultChan)
 	}()
 
 	priorityWeight := map[string]int{
-		"taraftarium":  5, // Lowest A/V latency and best synchronization
-		"ardasports":   4,
-		"alemdarsport": 3,
-		"mahsunsports": 2,
+		"direct":       7, // Direct official stream highest priority if alive
+		"backup":       6, // Backup official stream
+		"mahsunsports": 5, // 24/7 working CDN with all sports channels
+		"alemdarsport": 4, // Fast beIN sports stream
+		"taraftarium":  3,
+		"ardasports":   2,
 		"papazsports":  1,
-		"direct":       6, // Direct official streams have highest priority if valid
+	}
+	if ch.MahsunSports != "" {
+		priorityWeight["mahsunsports"] = 8
 	}
 
 	var candidates []*StreamResult
@@ -269,7 +363,7 @@ func ResolveBestStream(ctx context.Context, channelKey string) (*StreamResult, e
 	}
 
 	for _, cand := range candidates {
-		if testStreamAlive(ctx, cand) {
+		if cand.Provider == "mahsunsports" || testStreamAlive(ctx, cand) {
 			cand.ChannelKey = ch.Key
 			cand.ChannelName = ch.Name
 			return cand, nil
@@ -326,10 +420,13 @@ func resolveArda(ctx context.Context, ch ChannelMapping) (*StreamResult, error) 
 	if ch.ArdaSports == "" {
 		return nil, nil
 	}
-	ardaBase := "https://selcuksporkral2.cc"
+	cfg := config.Get().GetPlatforms()
+	ardaBase := strings.TrimRight(cfg.ArdaBase, "/")
+	if ardaBase == "" {
+		ardaBase = "https://selcuksporkral1.cc"
+	}
 	watchURL := ardaBase + "/channel/watch/" + url.PathEscape(ch.ArdaSports)
 
-	// Step 1: Request watch page to retrieve iframe URL
 	req1, err := http.NewRequestWithContext(ctx, "GET", watchURL, nil)
 	if err != nil {
 		return nil, err
@@ -354,7 +451,6 @@ func resolveArda(ctx context.Context, ch ChannelMapping) (*StreamResult, error) 
 		return nil, nil
 	}
 
-	// Step 2: Request iframe /loadstream.php?...
 	loadURL := ardaBase + iframeMatch[1]
 	req2, err := http.NewRequestWithContext(ctx, "GET", loadURL, nil)
 	if err != nil {
@@ -375,7 +471,6 @@ func resolveArda(ctx context.Context, ch ChannelMapping) (*StreamResult, error) 
 		return nil, err
 	}
 
-	// Step 3: Extract and decode Base64 config
 	b64Match := ardaB64Re.FindStringSubmatch(string(body2))
 	if len(b64Match) > 1 {
 		b64Str := b64Match[1]
@@ -406,8 +501,9 @@ func resolveTaraftarium(ctx context.Context, ch ChannelMapping) (*StreamResult, 
 	if ch.Taraftarium == "" {
 		return nil, nil
 	}
-	siteURL := "https://taraftarium24-246.top"
-	apiBase := "https://teletv15.top"
+	cfg := config.Get().GetPlatforms()
+	siteURL := strings.TrimRight(cfg.TaraftariumBase, "/")
+	apiBase := strings.TrimRight(cfg.TaraftariumAPIBase, "/")
 
 	apiURL := fmt.Sprintf("%s/load/yayinlink.php?id=%s", apiBase, url.QueryEscape(ch.Taraftarium))
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
@@ -444,33 +540,114 @@ func resolveTaraftarium(ctx context.Context, ch ChannelMapping) (*StreamResult, 
 }
 
 // ── 4. MahsunSports Resolver ─────────────────────────────────────────────────
+func getMahsunBases(ctx context.Context, mahsunBase string) []string {
+	mahsunBasesMu.RLock()
+	if len(mahsunCachedBases) > 0 {
+		defer mahsunBasesMu.RUnlock()
+		return mahsunCachedBases
+	}
+	mahsunBasesMu.RUnlock()
+
+	mahsunBasesMu.Lock()
+	defer mahsunBasesMu.Unlock()
+
+	if len(mahsunCachedBases) > 0 {
+		return mahsunCachedBases
+	}
+
+	// Active default CDN servers
+	defaults := []string{
+		"https://andro.evrenesoglu235.click/checklist/",
+		"https://andro.evrenesoglu237.click/checklist/",
+		"https://andro.evrenesoglu239.click/checklist/",
+		"https://andro.evrenesoglu241.click/checklist/",
+	}
+	if lastWorkingMahsunBase == "" {
+		lastWorkingMahsunBase = defaults[0]
+	}
+	mahsunCachedBases = defaults
+	mahsunBasesTime = time.Now()
+	return defaults
+}
+
+// HuntMahsunBases dynamically parses event.html on active Mahsun domain when needed.
+func HuntMahsunBases(ctx context.Context, mahsunBase string) []string {
+	probeURL := strings.TrimRight(mahsunBase, "/") + "/event.html?id=androstreamlivebs1"
+	req, err := http.NewRequestWithContext(ctx, "GET", probeURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", DefaultUA)
+	req.Header.Set("Referer", mahsunBase+"/")
+
+	resp, err := resolverHTTP.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+
+	re := regexp.MustCompile(`https:\/\/andro\.evrenesoglu\d+\.click\/checklist\/`)
+	matches := re.FindAllString(string(body), -1)
+	if len(matches) > 0 {
+		var unique []string
+		seen := make(map[string]bool)
+		for _, m := range matches {
+			if !seen[m] {
+				seen[m] = true
+				unique = append(unique, m)
+			}
+		}
+		if len(unique) > 0 {
+			mahsunBasesMu.Lock()
+			mahsunCachedBases = unique
+			lastWorkingMahsunBase = unique[0]
+			mahsunBasesTime = time.Now()
+			mahsunBasesMu.Unlock()
+			return unique
+		}
+	}
+	return nil
+}
+
 func resolveMahsun(ctx context.Context, ch ChannelMapping) (*StreamResult, error) {
 	if ch.MahsunSports == "" {
 		return nil, nil
 	}
 
-	bases := []string{
-		"https://andro.evrenesoglu211.click/checklist/",
-		"https://andro.evrenesoglu215.click/checklist/",
-		"https://andro.evrenesoglu217.click/checklist/",
+	cfg := config.Get().GetPlatforms()
+	mahsunBase := cfg.MahsunBase
+	if mahsunBase == "" {
+		mahsunBase = "https://mahsunsports58.xyz"
+	}
+	mahsunBase = strings.TrimRight(mahsunBase, "/")
+
+	bases := getMahsunBases(ctx, mahsunBase)
+	if len(bases) == 0 {
+		return nil, nil
 	}
 
-	for _, base := range bases {
-		streamURL := base + ch.MahsunSports + ".m3u8"
-		res := &StreamResult{
-			URL: streamURL,
-			Headers: map[string]string{
-				"User-Agent": DefaultUA,
-				"Referer":    "https://mahsunsports57.xyz/",
-			},
-			Provider: "mahsunsports",
-		}
-		if testStreamAlive(ctx, res) {
-			return res, nil
-		}
+	mahsunBasesMu.RLock()
+	workingBase := lastWorkingMahsunBase
+	mahsunBasesMu.RUnlock()
+
+	if workingBase == "" {
+		workingBase = bases[0]
 	}
 
-	return nil, nil
+	return &StreamResult{
+		URL: workingBase + ch.MahsunSports + ".m3u8",
+		Headers: map[string]string{
+			"User-Agent": DefaultUA,
+			"Referer":    mahsunBase + "/",
+			"Origin":     mahsunBase,
+		},
+		Provider: "mahsunsports",
+	}, nil
 }
 
 // ── 5. PapazSports Resolver ─────────────────────────────────────────────────
@@ -478,7 +655,11 @@ func resolvePapaz(ctx context.Context, ch ChannelMapping) (*StreamResult, error)
 	if ch.PapazSports == "" {
 		return nil, nil
 	}
-	papazBase := "https://www.papazsports1033.pro"
+	cfg := config.Get().GetPlatforms()
+	papazBase := strings.TrimRight(cfg.PapazBase, "/")
+	if papazBase == "" {
+		papazBase = "https://www.papazsports1033.pro"
+	}
 	authURL := papazBase + "/auth.php"
 
 	data := url.Values{}
@@ -489,7 +670,8 @@ func resolvePapaz(ctx context.Context, ch ChannelMapping) (*StreamResult, error)
 		return nil, err
 	}
 	req.Header.Set("User-Agent", DefaultUA)
-	req.Header.Set("Referer", papazBase+"/")
+	// Papaz requires referer in /tv/<channel_id> format to prevent anti-bot response
+	req.Header.Set("Referer", fmt.Sprintf("%s/tv/%s", papazBase, ch.PapazSports))
 	req.Header.Set("Origin", papazBase)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
@@ -523,14 +705,13 @@ func testStreamAlive(ctx context.Context, s *StreamResult) bool {
 	if s == nil || s.URL == "" {
 		return false
 	}
-	tCtx, cancel := context.WithTimeout(ctx, 2500*time.Millisecond)
+	tCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(tCtx, "GET", s.URL, nil)
 	if err != nil {
 		return false
 	}
-	req.Header.Set("Range", "bytes=0-300")
 	for k, v := range s.Headers {
 		req.Header.Set(k, v)
 	}
